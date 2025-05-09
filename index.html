@@ -73,30 +73,25 @@
       'Content-Type': 'application/json'
     };
 
-    // Variables globales
-    let mapa;
-    let marcadores = [];
-    let datos = [];
+    let mapa, marcadores = [], datos = [];
 
-    // Cambiar pestañas
-    window.showTab = function(id) {
-      document.querySelectorAll('section').forEach(sec => sec.classList.remove('active'));
+    window.showTab = id => {
+      document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
       document.getElementById(id).classList.add('active');
-      document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
       document.querySelector(`nav button[onclick*="${id}"]`).classList.add('active');
     };
 
-    // Carga datos desde Airtable
     async function loadDatos() {
       try {
         const res = await fetch(endpoint + '?view=Grid%20view', { headers });
         const json = await res.json();
         datos = json.records.map(r => ({
-          id:   r.id,
+          id: r.id,
           nombre: r.fields.Nombre,
-          pais:   r.fields.Pais,
-          lat:    r.fields.Lat,
-          lng:    r.fields.Lng,
+          pais: r.fields.Pais,
+          lat: r.fields.Lat,
+          lng: r.fields.Lng,
           estado: r.fields.Estado || ''
         }));
       } catch (e) {
@@ -105,7 +100,6 @@
       }
     }
 
-    // Renderiza lista y estadísticas
     function renderLista() {
       const tbody = document.getElementById('tabla');
       tbody.innerHTML = '';
@@ -122,33 +116,30 @@
           </td>`;
         tbody.appendChild(tr);
       });
-      // Estadísticas
-      const totalCiudades = datos.length;
-      const ciudadesVis   = datos.filter(c => c.estado==='visited').length;
-      const paises        = [...new Set(datos.map(c=>c.pais))];
-      const paisesVis     = [...new Set(datos.filter(c=>c.estado==='visited').map(c=>c.pais))];
-      document.getElementById('totalCiudades').textContent  = totalCiudades;
-      document.getElementById('ciudadesCount').textContent  = ciudadesVis;
+      const totalC = datos.length;
+      const visC   = datos.filter(x=>x.estado==='visited').length;
+      const paises = [...new Set(datos.map(x=>x.pais))];
+      const visP   = [...new Set(datos.filter(x=>x.estado==='visited').map(x=>x.pais))];
+      document.getElementById('totalCiudades').textContent  = totalC;
+      document.getElementById('ciudadesCount').textContent  = visC;
       document.getElementById('totalPaises').textContent    = paises.length;
-      document.getElementById('paisesCount').textContent    = paisesVis.length;
+      document.getElementById('paisesCount').textContent    = visP.length;
     }
 
-    // Renderiza mapa
     function renderMapa() {
-      marcadores.forEach(m => mapa.removeLayer(m));
+      marcadores.forEach(m=>mapa.removeLayer(m));
       marcadores = [];
       datos.forEach(c => {
-        if (c.estado === 'visited') {
-          const m = L.marker([c.lat, c.lng]).addTo(mapa).bindPopup(c.nombre);
+        if (c.estado==='visited') {
+          const m = L.marker([c.lat,c.lng]).addTo(mapa).bindPopup(c.nombre);
           marcadores.push(m);
         }
       });
     }
 
-    // Marca visitada
     async function marcarVisitada(i) {
-      const rec = datos[i]; rec.estado = 'visited';
-      await fetch(`${endpoint}/${rec.id}`, {
+      const r = datos[i]; r.estado='visited';
+      await fetch(`${endpoint}/${r.id}`, {
         method:'PATCH',
         headers,
         body: JSON.stringify({ fields:{ Estado:'visited' } })
@@ -156,10 +147,9 @@
       await init();
     }
 
-    // Marca wishlist
     async function marcarWishlist(i) {
-      const rec = datos[i]; rec.estado = 'wishlist';
-      await fetch(`${endpoint}/${rec.id}`, {
+      const r = datos[i]; r.estado='wishlist';
+      await fetch(`${endpoint}/${r.id}`, {
         method:'PATCH',
         headers,
         body: JSON.stringify({ fields:{ Estado:'wishlist' } })
@@ -167,29 +157,24 @@
       await init();
     }
 
-    // Añade ciudad nueva
     async function agregarCiudad() {
       const nombre = document.getElementById('nuevaCiudad').value.trim();
       const pais   = document.getElementById('nuevoPais').value.trim();
       const lat    = parseFloat(document.getElementById('nuevaLat').value);
       const lng    = parseFloat(document.getElementById('nuevaLng').value);
       if (!nombre||!pais||isNaN(lat)||isNaN(lng)) {
-        alert('Completa todos los campos.'); return;
+        return alert('Completa todos los campos.');
       }
       await fetch(endpoint, {
         method:'POST',
         headers,
         body: JSON.stringify({ fields:{ Nombre:nombre, Pais:pais, Lat:lat, Lng:lng, Estado:'' } })
       });
-      document.getElementById('nuevaCiudad').value = '';
-      document.getElementById('nuevoPais').value    = '';
-      document.getElementById('nuevaLat').value     = '';
-      document.getElementById('nuevaLng').value     = '';
+      ['nuevaCiudad','nuevoPais','nuevaLat','nuevaLng'].forEach(id=>document.getElementById(id).value='');
       alert('Ciudad añadida.');
       await init();
     }
 
-    // Inicialización
     async function init() {
       if (!mapa) {
         mapa = L.map('map').setView([20,0],2);
