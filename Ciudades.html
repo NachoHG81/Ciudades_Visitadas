@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ciudades Visitadas</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #e1ebf1; }
+    header { background: #003366; color: white; padding: 1em; text-align: center; }
+    nav { display: flex; justify-content: space-around; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    nav button { flex: 1; padding: 1em; border: none; background: none; font-size: 1em; cursor: pointer; color: #003366; }
+    nav button.active { border-bottom: 2px solid #003366; font-weight: bold; }
+    section { display: none; padding: 1em; }
+    section.active { display: block; }
+    #map { height: 500px; margin-top: 1em; }
+    .stats { margin: 1em 0; color: #003366; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1em; }
+    th, td { border: 1px solid #ccc; padding: 0.5em; }
+    .visited { background: #d4edda; }
+    .wishlist { background: #fff3cd; }
+    .form-control { display: flex; flex-direction: column; gap: 0.5em; margin-top: 1em; }
+    .form-control input { padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; }
+    .form-control button { padding: 0.6em; background: #003366; color: white; border: none; cursor: pointer; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ciudades Visitadas</h1>
+  </header>
+  <nav>
+    <button onclick="showTab('mapa')" class="active">Mapa</button>
+    <button onclick="showTab('lista')">Lista</button>
+    <button onclick="showTab('añadir')">Añadir</button>
+  </nav>
+
+  <section id="mapa" class="active">
+    <div class="stats">
+      <strong>Países visitados:</strong> <span id="paisesCount">0</span> / <span id="totalPaises">0</span> |
+      <strong>Ciudades visitadas:</strong> <span id="ciudadesCount">0</span> / <span id="totalCiudades">0</span>
+    </div>
+    <div id="map"></div>
+  </section>
+
+  <section id="lista">
+    <table>
+      <thead>
+        <tr><th>Ciudad</th><th>País</th><th>Estado</th><th>Acciones</th></tr>
+      </thead>
+      <tbody id="tabla"></tbody>
+    </table>
+  </section>
+
+  <section id="añadir">
+    <div class="form-control">
+      <input type="text" id="nuevaCiudad" placeholder="Nombre de la ciudad">
+      <input type="text" id="nuevoPais" placeholder="País">
+      <input type="number" id="nuevaLat" placeholder="Latitud">
+      <input type="number" id="nuevaLng" placeholder="Longitud">
+      <button onclick="agregarCiudad()">Añadir Ciudad</button>
+    </div>
+  </section>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // CONFIGURACIÓN de Airtable
+    const AIRTABLE_TOKEN = 'pat3MKuN330J89QyZ.6d55f28d8f0cad2fe64a878bd9db2744f7a132b018203376ddea13430a7f0b86';
+    const AIRTABLE_BASE_ID = 'appFePKB4HL6MRncM';
+    const AIRTABLE_TABLE = 'Ciudades';
+    const endpoint = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE}`;
+    const headers = {
+      'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+      'Content-Type': 'application/json'
+    };
+
+    // Variables globales
+    let mapa;
+    let marcadores = [];
+    let datos = [];
+
+    // Cambiar pestañas
+    window.showTab = function(id) {
+      document.querySelectorAll('section').forEach(sec => sec.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
+      document.querySelector(`nav button[onclick*="${id}"]`).classList.add('active');
+    };
+
+    // Carga datos desde Airtable
+    async function loadDatos() {
+      try {
+        const res = await fetch(endpoint + '?view=Grid%20view', { headers });
+        const json = await res.json();
+        datos = json.records.map(r => ({
+          id:   r.id,
+          nombre: r.fields.Nombre,
+          pais:   r.fields.Pais,
+          lat:    r.fields.Lat,
+          lng:    r.fields.Lng,
+          estado: r.fields.Estado || ''
+        }));
+      } catch (e) {
+        console.error('Error al cargar datos:', e);
+        datos = [];
+      }
+    }
+
+    // Renderiza lista y estadísticas
+    function renderLista() {
+      const tbody = document.getElementById('tabla');
+      tbody.innerHTML = '';
+      datos.forEach((c,i) => {
+        const tr = document.createElement('tr');
+        tr.className = c.estado;
+        tr.innerHTML = `
+          <td>${c.nombre}</td>
+          <td>${c.pais}</td>
+          <td>${c.estado}</td>
+          <td>
+            <button onclick="marcarVisitada(${i})">Visitada</button>
+            <button onclick="marcarWishlist(${i})">Quiero ir</button>
+          </td>`;
+        tbody.appendChild(tr);
+      });
+      // Estadísticas
+      const totalCiudades = datos.length;
+      const ciudadesVis   = datos.filter(c => c.estado==='visited').length;
+      const paises        = [...new Set(datos.map(c=>c.pais))];
+      const paisesVis     = [...new Set(datos.filter(c=>c.estado==='visited').map(c=>c.pais))];
+      document.getElementById('totalCiudades').textContent  = totalCiudades;
+      document.getElementById('ciudadesCount').textContent  = ciudadesVis;
+      document.getElementById('totalPaises').textContent    = paises.length;
+      document.getElementById('paisesCount').textContent    = paisesVis.length;
+    }
+
+    // Renderiza mapa
+    function renderMapa() {
+      marcadores.forEach(m => mapa.removeLayer(m));
+      marcadores = [];
+      datos.forEach(c => {
+        if (c.estado === 'visited') {
+          const m = L.marker([c.lat, c.lng]).addTo(mapa).bindPopup(c.nombre);
+          marcadores.push(m);
+        }
+      });
+    }
+
+    // Marca visitada
+    async function marcarVisitada(i) {
+      const rec = datos[i]; rec.estado = 'visited';
+      await fetch(`${endpoint}/${rec.id}`, {
+        method:'PATCH',
+        headers,
+        body: JSON.stringify({ fields:{ Estado:'visited' } })
+      });
+      await init();
+    }
+
+    // Marca wishlist
+    async function marcarWishlist(i) {
+      const rec = datos[i]; rec.estado = 'wishlist';
+      await fetch(`${endpoint}/${rec.id}`, {
+        method:'PATCH',
+        headers,
+        body: JSON.stringify({ fields:{ Estado:'wishlist' } })
+      });
+      await init();
+    }
+
+    // Añade ciudad nueva
+    async function agregarCiudad() {
+      const nombre = document.getElementById('nuevaCiudad').value.trim();
+      const pais   = document.getElementById('nuevoPais').value.trim();
+      const lat    = parseFloat(document.getElementById('nuevaLat').value);
+      const lng    = parseFloat(document.getElementById('nuevaLng').value);
+      if (!nombre||!pais||isNaN(lat)||isNaN(lng)) {
+        alert('Completa todos los campos.'); return;
+      }
+      await fetch(endpoint, {
+        method:'POST',
+        headers,
+        body: JSON.stringify({ fields:{ Nombre:nombre, Pais:pais, Lat:lat, Lng:lng, Estado:'' } })
+      });
+      document.getElementById('nuevaCiudad').value = '';
+      document.getElementById('nuevoPais').value    = '';
+      document.getElementById('nuevaLat').value     = '';
+      document.getElementById('nuevaLng').value     = '';
+      alert('Ciudad añadida.');
+      await init();
+    }
+
+    // Inicialización
+    async function init() {
+      if (!mapa) {
+        mapa = L.map('map').setView([20,0],2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapa);
+      }
+      await loadDatos();
+      renderLista();
+      renderMapa();
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
