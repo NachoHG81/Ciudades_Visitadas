@@ -83,9 +83,12 @@
     };
 
     async function loadDatos() {
+      console.log('Cargando datos desde Airtable...');
       try {
-        const res = await fetch(endpoint + '?view=Grid%20view', { headers });
+        const res = await fetch(endpoint, { headers });
+        console.log('Respuesta fetch:', res.status, res.statusText);
         const json = await res.json();
+        console.log('Datos crudos:', json);
         datos = json.records.map(r => ({
           id: r.id,
           nombre: r.fields.Nombre,
@@ -94,6 +97,7 @@
           lng: r.fields.Lng,
           estado: r.fields.Estado || ''
         }));
+        console.log('Datos map:', datos);
       } catch (e) {
         console.error('Error al cargar datos:', e);
         datos = [];
@@ -101,6 +105,7 @@
     }
 
     function renderLista() {
+      console.log('Renderizando lista...');
       const tbody = document.getElementById('tabla');
       tbody.innerHTML = '';
       datos.forEach((c,i) => {
@@ -117,67 +122,80 @@
         tbody.appendChild(tr);
       });
       const totalC = datos.length;
-      const visC   = datos.filter(x=>x.estado==='visited').length;
-      const paises = [...new Set(datos.map(x=>x.pais))];
-      const visP   = [...new Set(datos.filter(x=>x.estado==='visited').map(x=>x.pais))];
-      document.getElementById('totalCiudades').textContent  = totalC;
-      document.getElementById('ciudadesCount').textContent  = visC;
-      document.getElementById('totalPaises').textContent    = paises.length;
-      document.getElementById('paisesCount').textContent    = visP.length;
+      const visC = datos.filter(x => x.estado === 'visited').length;
+      const paises = [...new Set(datos.map(x => x.pais))];
+      const visP = [...new Set(datos.filter(x => x.estado === 'visited').map(x => x.pais))];
+      document.getElementById('totalCiudades').textContent = totalC;
+      document.getElementById('ciudadesCount').textContent = visC;
+      document.getElementById('totalPaises').textContent = paises.length;
+      document.getElementById('paisesCount').textContent = visP.length;
     }
 
     function renderMapa() {
-      marcadores.forEach(m=>mapa.removeLayer(m));
+      console.log('Renderizando mapa...');
+      marcadores.forEach(m => mapa.removeLayer(m));
       marcadores = [];
       datos.forEach(c => {
-        if (c.estado==='visited') {
-          const m = L.marker([c.lat,c.lng]).addTo(mapa).bindPopup(c.nombre);
+        if (c.estado === 'visited') {
+          const m = L.marker([c.lat, c.lng]).addTo(mapa).bindPopup(c.nombre);
           marcadores.push(m);
         }
       });
     }
 
     async function marcarVisitada(i) {
-      const r = datos[i]; r.estado='visited';
-      await fetch(`${endpoint}/${r.id}`, {
-        method:'PATCH',
-        headers,
-        body: JSON.stringify({ fields:{ Estado:'visited' } })
-      });
-      await init();
+      console.log('Marcar visitada:', i);
+      try {
+        const r = datos[i]; r.estado = 'visited';
+        const res = await fetch(`${endpoint}/${r.id}`, {
+          method: 'PATCH', headers,
+          body: JSON.stringify({ fields: { Estado: 'visited' } })
+        });
+        console.log('PATCH visitada:', res.status);
+        await init();
+      } catch (e) { console.error('Error PATCH:', e); }
     }
 
     async function marcarWishlist(i) {
-      const r = datos[i]; r.estado='wishlist';
-      await fetch(`${endpoint}/${r.id}`, {
-        method:'PATCH',
-        headers,
-        body: JSON.stringify({ fields:{ Estado:'wishlist' } })
-      });
-      await init();
+      console.log('Marcar wishlist:', i);
+      try {
+        const r = datos[i]; r.estado = 'wishlist';
+        const res = await fetch(`${endpoint}/${r.id}`, {
+          method: 'PATCH', headers,
+          body: JSON.stringify({ fields: { Estado: 'wishlist' } })
+        });
+        console.log('PATCH wishlist:', res.status);
+        await init();
+      } catch (e) { console.error('Error PATCH wishlist:', e); }
     }
 
     async function agregarCiudad() {
+      console.log('Agregar ciudad...');
       const nombre = document.getElementById('nuevaCiudad').value.trim();
-      const pais   = document.getElementById('nuevoPais').value.trim();
-      const lat    = parseFloat(document.getElementById('nuevaLat').value);
-      const lng    = parseFloat(document.getElementById('nuevaLng').value);
-      if (!nombre||!pais||isNaN(lat)||isNaN(lng)) {
+      const pais = document.getElementById('nuevoPais').value.trim();
+      const lat = parseFloat(document.getElementById('nuevaLat').value);
+      const lng = parseFloat(document.getElementById('nuevaLng').value);
+      if (!nombre || !pais || isNaN(lat) || isNaN(lng)) {
         return alert('Completa todos los campos.');
       }
-      await fetch(endpoint, {
-        method:'POST',
-        headers,
-        body: JSON.stringify({ fields:{ Nombre:nombre, Pais:pais, Lat:lat, Lng:lng, Estado:'' } })
-      });
-      ['nuevaCiudad','nuevoPais','nuevaLat','nuevaLng'].forEach(id=>document.getElementById(id).value='');
-      alert('Ciudad añadida.');
-      await init();
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST', headers,
+          body: JSON.stringify({ fields: { Nombre: nombre, Pais: pais, Lat: lat, Lng: lng, Estado: '' } })
+        });
+        console.log('POST nueva ciudad:', res.status);
+        ['nuevaCiudad','nuevoPais','nuevaLat','nuevaLng'].forEach(id => document.getElementById(id).value = '');
+        alert('Ciudad añadida.');
+        await init();
+      } catch (e) {
+        console.error('Error POST agregar ciudad:', e);
+      }
     }
 
     async function init() {
+      console.log('Inicializando app...');
       if (!mapa) {
-        mapa = L.map('map').setView([20,0],2);
+        mapa = L.map('map').setView([20, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapa);
       }
       await loadDatos();
